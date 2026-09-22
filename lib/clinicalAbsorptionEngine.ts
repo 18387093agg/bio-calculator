@@ -283,11 +283,9 @@ export function evaluateEntericBioavailability(
       const hemeFrac =
         context.hemeIronFraction != null
           ? Math.min(1, Math.max(0, context.hemeIronFraction))
-          : form.includes('heme')
+          : animal || form.includes('heme')
             ? 1
-            : animal
-              ? 0.4
-              : 0;
+            : 0;
       const hMin = 0.15;
       const hMax = 0.35;
       const nMin = 0.03;
@@ -296,7 +294,7 @@ export function evaluateEntericBioavailability(
       max = hemeFrac * hMax + (1 - hemeFrac) * nMax;
       formName = hemeFrac > 0.05 ? `Mixed iron (${Math.round(hemeFrac * 100)}% heme)` : 'Non-heme iron';
       notes.push(
-        `Iron = heme×15–35% + non-heme×2–12% (Hunt/Hallberg). Animal foods are not assumed to be 100% heme; 40% is only a generic fallback when no food-specific heme fraction is available.`
+        `Iron = heme×15–35% + non-heme×2–12% (Hunt/Hallberg). Muscle is not 100% heme.`
       );
       break;
     }
@@ -469,21 +467,9 @@ export function evaluateEntericBioavailability(
       max *= 0.35;
     }
     if (nutrient === 'Vitamin B12') {
-      const isSupplementOrFreeForm =
-        form.includes('supplement') ||
-        form.includes('crystalline') ||
-        form.includes('cyanocobalamin') ||
-        form.includes('methylcobalamin') ||
-        form.includes('hydroxocobalamin') ||
-        form.includes('hydroxycobalamin');
-
-      if (!isSupplementOrFreeForm) {
-        min *= 0.3;
-        max *= 0.4;
-        notes.push('Low acid: food-bound B12 release from protein is impaired; source-specific model penalty applied.');
-      } else {
-        notes.push('Low acid: free/crystalline B12 does not require gastric protein release, so no food-bound B12 acid penalty is applied.');
-      }
+      min *= 0.3;
+      max *= 0.4;
+      notes.push('Low acid: B12 not freed from food protein.');
     }
     if (nutrient === 'Zinc' && !animal) {
       min *= 0.7;
