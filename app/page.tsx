@@ -461,7 +461,7 @@ export default function MealBioavailabilityPage() {
   const dynamicNutrientTargets = useMemo(() => {
     const safeW = Math.max(30, Math.min(300, Number(bodyWeightKg) || (userSex === 'female' ? 60 : 70)));
     const baseDynamic = calculateDynamicTargets(
-      { diet: dietType, bodyWeightKg: safeW, sex: userSex },
+      { diet: dietType, bodyWeightKg: safeW, sex: userSex, energyRequirementKcal: Math.max(0, Number(dailyCalories) || 0) },
       {
         proteinG: calculatedMacros.rawProtein,
         carbsG: calculatedMacros.rawCarbs,
