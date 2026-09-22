@@ -15,8 +15,6 @@ export interface BiomarkerClinicalVerdict {
   dynamicTargetMultiplier: number;
   absorptionMultiplier?: number;
   clinicalInsight: string;
-  evidenceType: 'human_intervention' | 'clinical_guideline' | 'population_reference' | 'biomarker_derived' | 'mechanistic_approximation' | 'fitted_calibration' | 'mathematical_derivation' | 'heuristic' | 'unsupported';
-  evidenceNote?: string;
 }
 
 const WATER_OR_MINERAL = [
@@ -105,26 +103,10 @@ export function evaluateBiomarkerStatus(
     const nutrient = resolveCanonicalNutrient(marker.markerName);
     if (isIntra(marker)) {
       if (low(marker)) {
-        return verdict(
-          nutrient,
-          'deficient',
-          1.5,
-          `Intracellular ${marker.markerName} ${marker.value} ${marker.unit} is below the supplied laboratory range. The +50% target adjustment is a model rule, not a physiological fact.`,
-          undefined,
-          'heuristic',
-          'No validated universal percentage increase in dietary requirement was identified; 1.5× is retained as an explicit model assumption.'
-        );
+        return verdict(nutrient, 'deficient', 1.5, `Intracellular ${marker.markerName} ${marker.value} ${marker.unit} is low. Fact. Raise target 50%.`);
       }
       if (high(marker)) {
-        return verdict(
-          nutrient,
-          'excess',
-          0.8,
-          `Intracellular ${marker.markerName} is above the supplied laboratory range. The 20% reduction is a model rule, not a physiological fact.`,
-          undefined,
-          'heuristic',
-          'No validated universal percentage reduction in requirement was identified.'
-        );
+        return verdict(nutrient, 'excess', 0.8, `Intracellular ${marker.markerName} high. Ease target 20%.`);
       }
       return verdict(nutrient, 'optimal', 1, `Intracellular ${marker.markerName} in range. No goalpost move.`);
     }
@@ -158,9 +140,7 @@ function verdict(
   status: BiomarkerClinicalVerdict['status'],
   mult: number,
   insight: string,
-  abs?: number,
-  evidenceType: BiomarkerClinicalVerdict['evidenceType'] = 'heuristic',
-  evidenceNote?: string
+  abs?: number
 ): BiomarkerClinicalVerdict {
   return {
     targetNutrient: nutrient,
@@ -168,8 +148,6 @@ function verdict(
     dynamicTargetMultiplier: mult,
     absorptionMultiplier: abs,
     clinicalInsight: insight,
-    evidenceType,
-    evidenceNote,
   };
 }
 
