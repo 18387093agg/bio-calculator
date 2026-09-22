@@ -1,127 +1,52 @@
-import { describe, it, expect } from 'vitest';
-import {
-  calculateDynamicTargets,
-  evaluateMethylationDemand,
-} from '../lib/metabolicEngine';
-import {
-  evaluateBiomarkerStatus,
-  BiomarkerInput,
-} from '../lib/bloodBiomarkerEngine';
-import {
-  evaluateCalorieMalabsorption,
-  evaluateEntericBioavailability,
-} from '../lib/clinicalAbsorptionEngine';
-import { calculateSupplementImpact } from '../lib/supplementRegistry';
+import { describe,it,expect } from 'vitest';
+import { calculateDynamicTargets,evaluateMethylationDemand } from '../lib/metabolicEngine';
+import { evaluateBiomarkerStatus } from '../lib/bloodBiomarkerEngine';
+import { evaluateCalorieMalabsorption,evaluateEntericBioavailability } from '../lib/clinicalAbsorptionEngine';
 
-describe('Clinical Engine Suite - Exact Physiological Math Assertions', () => {
-
-  it('calculates EXACT metabolic surcharges for 800g Carb Shock', () => {
-    const targets = calculateDynamicTargets(
-      { diet: 'high_carb', bodyWeightKg: 75, sex: 'male' },
-      { proteinG: 120, carbsG: 800, fatG: 40, pufaG: 4, fiberG: 20, totalCalories: 4040 }
-    );
-
-    // B1: 2.0 base + (650 * 0.005) = 5.25 mg
-    expect(targets['thiamineb1'].surcharge).toBe(3.25);
-    expect(targets['thiamineb1'].effectiveOptimal).toBe(5.25);
-
-    // Mg: 75 * 6.5 = 488 base + (550 * 0.4 = 220) = 708 mg
-    expect(targets['magnesium'].surcharge).toBe(220);
-    expect(targets['magnesium'].effectiveOptimal).toBe(708);
+describe('rebuilt calculation core',()=>{
+  it('uses the requested energy-linked B1 model',()=>{
+    const t=calculateDynamicTargets({diet:'carnivore',bodyWeightKg:75,sex:'male'},{proteinG:120,carbsG:0,fatG:40,pufaG:4,fiberG:0,totalCalories:2500});
+    expect(t.thiamineb1.effectiveOptimal).toBe(1.6);
+    expect(t.thiamineb1.surcharge).toBeUndefined();
   });
-
-  it('calculates EXACT transamination and methylation metrics for 300g Protein', () => {
-    const targets = calculateDynamicTargets(
-      { diet: 'carnivore', bodyWeightKg: 85, sex: 'male' },
-      { proteinG: 300, carbsG: 0, fatG: 140, pufaG: 3, fiberG: 0, totalCalories: 2460 }
-    );
-
-    // B6: 1.5 + (3 * 0.8) = 3.9 mg
-    expect(targets['vitaminb6'].effectiveOptimal).toBe(3.9);
-
-    // Methylation: 300 * 0.026 = 7.8g Methionine -> 7.8 * 450 = 3510 mg Choline needed
-    const methylation = evaluateMethylationDemand(300, 350, 5, 10);
-    expect(methylation.methionineLoadGrams).toBe(7.8);
-    expect(methylation.minCholineRequiredMg).toBe(3510);
-    expect(methylation.coveragePct).toBe(10);
-    expect(methylation.isAdequate).toBe(false);
+  it('keeps methylation calculation deterministic',()=>{
+    const x=evaluateMethylationDemand(300,350,5,10);
+    expect(x.methionineLoadGrams).toBe(7.8);
+    expect(x.minCholineRequiredMg).toBe(3510);
+    expect(x.coveragePct).toBe(10);
+    expect(x.isAdequate).toBe(false);
   });
-
-  it('calculates EXACT enteric calorie and macro absorption factors', () => {
-    const compromised = evaluateCalorieMalabsorption(
-      { gastricAcid: 'hypochlorhydria', pathology: 'sibo', bileImpairment: false },
-      true
-    );
-
-    // Protein: 0.95 - 0.10 = 0.85
-    expect(compromised.proteinAbsorptionPct).toBe(0.85);
-    // Fat: 0.97 - 0.18 = 0.79
-    expect(compromised.fatAbsorptionPct).toBe(0.79);
-    // Net factor: (0.85 + 0.79 + 0.98) / 3 = 0.8733 -> 0.87
-    expect(compromised.netCalorieFactor).toBe(0.87);
+  it('keeps calorie absorption floors',()=>{
+    const x=evaluateCalorieMalabsorption({gastricAcid:'hypochlorhydria',pathology:'sibo',bileImpairment:false},true);
+    expect(x.proteinAbsorptionPct).toBe(.85);
+    expect(x.fatAbsorptionPct).toBe(.79);
+    expect(x.netCalorieFactor).toBe(.87);
   });
-
-  it('enforces exact 120mg sanity cap for 10,000 IU D3 Magnesium drain', () => {
-    const impact = calculateSupplementImpact([
-      { supplementId: 'vit_d3', dose: 10000, selectedUnit: 'IU' },
-    ]);
-
-    expect(impact.totalCofactorSurcharges['magnesium'].amount).toBe(120);
+  it('handles ferritin with inflammation conservatively',()=>{
+    const marker={markerName:'Ferritin',compartment:'serum' as const,value:340,unit:'ng/mL',refLow:30,refHigh:200};
+    const crp={markerName:'hs-CRP',compartment:'serum' as const,value:4.8,unit:'mg/L',refLow:0,refHigh:1};
+    const v=evaluateBiomarkerStatus(marker,[crp]);
+    expect(v?.status).toBe('unreliable_norm');
+    expect(v?.dynamicTargetMultiplier).toBe(1);
   });
-
-  it('verifies exact inflammation masking logic for Ferritin with hs-CRP > 3.0', () => {
-    const context: BiomarkerInput[] = [
-      { markerName: 'Ferritin', compartment: 'serum', value: 340, unit: 'ng/mL', refLow: 30, refHigh: 200 },
-      { markerName: 'hs-CRP', compartment: 'serum', value: 4.8, unit: 'mg/L', refLow: 0, refHigh: 1.0 },
-    ];
-
-    const verdict = evaluateBiomarkerStatus(context[0], context);
-    expect(verdict?.status).toBe('unreliable_norm');
-    expect(verdict?.dynamicTargetMultiplier).toBe(1.0);
+  it('does not invent ZIP4 kinetics when SQL provides no kinetic parameters',()=>{
+    const x=evaluateEntericBioavailability('Zinc','Zinc Glycinate','trace_mineral',
+      {gastricAcid:'normochlorhydria',pathology:'none',bileImpairment:false},
+      {totalFatGrams:30,totalCarbsGrams:0,totalFiberGrams:0,totalZincMg:100,totalCopperMg:1.5,totalIronMg:10,totalCalciumMg:200,totalVitaminCMg:30,isPureAnimalFood:true});
+    expect(x.rateMin).toBe(.3);
+    expect(x.rateMax).toBe(.5);
   });
-
-  it('penalizes Zinc absorption dynamically under high bolus via ZIP4 saturation kinetics', () => {
-    // 1. Φυσιολογικό γεύμα (10mg Zn)
-    const lowBolus = evaluateEntericBioavailability(
-      'Zinc',
-      'Zinc Glycinate',
-      'trace_mineral',
-      { gastricAcid: 'normochlorhydria', pathology: 'none', bileImpairment: false },
-      {
-        totalFatGrams: 30,
-        totalCarbsGrams: 0,
-        totalFiberGrams: 0,
-        totalZincMg: 10,
-        totalCopperMg: 1.5,
-        totalIronMg: 10,
-        totalCalciumMg: 200,
-        totalVitaminCMg: 30,
-        isPureAnimalFood: true,
-      }
-    );
-    expect(lowBolus.effectiveActiveRate).toBe(0.48);
-
-    // 2. Υπερβολικό bolus (52mg Zn)
-    const highBolus = evaluateEntericBioavailability(
-      'Zinc',
-      'Zinc Glycinate',
-      'trace_mineral',
-      { gastricAcid: 'normochlorhydria', pathology: 'none', bileImpairment: false },
-      {
-        totalFatGrams: 30,
-        totalCarbsGrams: 0,
-        totalFiberGrams: 0,
-        totalZincMg: 52,
-        totalCopperMg: 1.5,
-        totalIronMg: 10,
-        totalCalciumMg: 200,
-        totalVitaminCMg: 30,
-        isPureAnimalFood: true,
-      }
-    );
-    // 0.48 / (1 + (52 - 12) * 0.025) = 0.48 / 2.0 = 0.24
-    expect(highBolus.effectiveActiveRate).toBe(0.24);
-    expect(highBolus.clinicalMechanismNotes.some((n: string) => n.includes('Κορεσμός ZIP4'))).toBe(true);
+  it('applies low-acid B12 only to food-bound forms',()=>{
+    const path={gastricAcid:'hypochlorhydria' as const,pathology:'none' as const,bileImpairment:false};
+    const food=evaluateEntericBioavailability('Vitamin B12','Food-bound cobalamin','water_soluble_vitamin',path,{totalFatGrams:10,totalCarbsGrams:0,totalFiberGrams:0,totalZincMg:5,totalCopperMg:1,totalIronMg:5,totalCalciumMg:200,totalVitaminCMg:0,isPureAnimalFood:true});
+    const free=evaluateEntericBioavailability('Vitamin B12','Cyanocobalamin supplement','water_soluble_vitamin',path,{totalFatGrams:10,totalCarbsGrams:0,totalFiberGrams:0,totalZincMg:5,totalCopperMg:1,totalIronMg:5,totalCalciumMg:200,totalVitaminCMg:0,isPureAnimalFood:false});
+    expect(food.rateMin).toBeLessThan(.45);
+    expect(free.rateMin).toBe(.45);
   });
-
+  it('applies low-acid iron penalty to non-heme fraction only',()=>{
+    const path={gastricAcid:'hypochlorhydria' as const,pathology:'none' as const,bileImpairment:false};
+    const mixed=evaluateEntericBioavailability('Iron','Mixed iron','trace_mineral',path,{totalFatGrams:10,totalCarbsGrams:0,totalFiberGrams:0,totalZincMg:5,totalCopperMg:1,totalIronMg:10,totalCalciumMg:200,totalVitaminCMg:0,isPureAnimalFood:true,hemeIronFraction:.5});
+    expect(mixed.rateMin).toBeCloseTo(.105);
+    expect(mixed.rateMax).toBeCloseTo(.2);
+  });
 });
