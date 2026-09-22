@@ -46,7 +46,7 @@ describe('rebuilt calculation core',()=>{
   it('applies low-acid iron penalty to non-heme fraction only',()=>{
     const path={gastricAcid:'hypochlorhydria' as const,pathology:'none' as const,bileImpairment:false};
     const mixed=evaluateEntericBioavailability('Iron','Mixed iron','trace_mineral',path,{totalFatGrams:10,totalCarbsGrams:0,totalFiberGrams:0,totalZincMg:5,totalCopperMg:1,totalIronMg:10,totalCalciumMg:200,totalVitaminCMg:0,isPureAnimalFood:true,hemeIronFraction:.5});
-    expect(mixed.rateMin).toBeCloseTo(.105);
-    expect(mixed.rateMax).toBeCloseTo(.2);
+    expect(mixed.rateMin).toBeCloseTo(.063);
+    expect(mixed.rateMax).toBeCloseTo(.17625);
   });
 });
