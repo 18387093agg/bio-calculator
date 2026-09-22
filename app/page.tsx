@@ -1319,7 +1319,10 @@ export default function MealBioavailabilityPage() {
                     ? dynamicInfo.effectiveRda
                     : (canonDef ? canonDef.defaultRda : Number((intakeOpt * 0.65).toFixed(1)));
 
-                  const intakeOptMin = canonDef?.defaultOptMin ?? Number((intakeRda * 1.25).toFixed(2));
+                  const intakeOptMin =
+                    dynamicInfo?.baseOptimal ??
+                    canonDef?.defaultOptMin ??
+                    Number((intakeRda * 1.3).toFixed(2));
 
                   const intakeUl = dynamicInfo?.upperTolerableLimit ?? canonDef?.upperLimit;
 
@@ -1366,7 +1369,15 @@ export default function MealBioavailabilityPage() {
                             <span className="text-base font-bold text-white tracking-wide">{r.nutrient_name}</span>
                             {dynamicInfo?.triggerReason && (
                               <span className="text-[10px] bg-amber-950/90 text-amber-300 border border-amber-800 px-2 py-0.5 rounded font-mono">
-                                Metabolic Surcharge
+                                Model Adjustment
+                              </span>
+                            )}
+                            {dynamicInfo?.evidenceType && (
+                              <span
+                                className="text-[10px] bg-slate-900 text-slate-400 border border-slate-700 px-2 py-0.5 rounded font-mono"
+                                title={dynamicInfo.evidenceNote || 'Evidence classification for this target model.'}
+                              >
+                                {dynamicInfo.evidenceType.replaceAll('_', ' ')}
                               </span>
                             )}
                           </div>
