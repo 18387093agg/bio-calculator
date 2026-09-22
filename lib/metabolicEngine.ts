@@ -69,7 +69,7 @@ export function calculateDynamicTargets(
 
   const b1OptimalMin = Number((energyRequirementKcal * 0.0006).toFixed(2));
   const b1OptimalMax = Number((energyRequirementKcal * 0.00068).toFixed(2));
-  const b1EffectiveOptimal = Number(((b1OptimalMin + b1OptimalMax) / 2).toFixed(2));
+  const b1EffectiveOptimal = b1OptimalMax;
 
   targets['thiamineb1'] = {
     effectiveRda: isFemale ? 1.1 : 1.2,
@@ -77,6 +77,8 @@ export function calculateDynamicTargets(
     effectiveOptimal: b1EffectiveOptimal,
     upperTolerableLimit: 100,
     triggerReason: `Energy requirement model: ${energyRequirementKcal.toFixed(0)} kcal/day`,
+    evidenceType: 'mechanistic_approximation',
+    evidenceNote: 'Underlying EFSA requirement is energy-linked; 0.60–0.68 mg/1000 kcal is the app optimization range and is not an established clinical requirement.',
   };
 
   targets['riboflavinb2'] = { effectiveRda: 1.3, baseOptimal: 2.2, effectiveOptimal: 2.2, upperTolerableLimit: 100 };
