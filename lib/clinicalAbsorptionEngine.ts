@@ -47,7 +47,7 @@ function base(n:CanonicalNutrient,c:MealContextState,f:string):[number,number,nu
     case 'Vitamin D':return[.55,.8,1,'Vitamin D'];
     case 'Vitamin E':return[.5,.8,1,'Vitamin E'];
     case 'Vitamin K':return[a?.4:.15,a?.7:.4,1,a?'Menaquinone':'Vitamin K1'];
-    case 'Thiamine (B1)':return[f.includes('ttfd')?[.8,.95,1,'TTFD']:[.5,.8,1,'Thiamine']][0] as never;
+    case 'Thiamine (B1)':return f.includes('ttfd')?[.8,.95,1,'TTFD']:[.5,.8,1,'Thiamine'];
     case 'Riboflavin (B2)':return[.6,.85,1,'Riboflavin'];
     case 'Niacin (B3)':return[.55,.85,a?1:.9,'Niacin'];
     case 'Pantothenic Acid (B5)':return[.4,.6,1,'Pantothenic acid'];
