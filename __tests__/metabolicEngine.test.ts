@@ -15,19 +15,21 @@ import { calculateSupplementImpact } from '../lib/supplementRegistry';
 
 describe('Clinical Engine Suite - Exact Physiological Math Assertions', () => {
 
-  it('calculates EXACT metabolic surcharges for 800g Carb Shock', () => {
+  it('uses energy-based B1 targets and does not invent a quantitative magnesium surcharge', () => {
     const targets = calculateDynamicTargets(
       { diet: 'high_carb', bodyWeightKg: 75, sex: 'male' },
       { proteinG: 120, carbsG: 800, fatG: 40, pufaG: 4, fiberG: 20, totalCalories: 4040 }
     );
 
-    // B1: 2.0 base + (650 * 0.005) = 5.25 mg
-    expect(targets['thiamineb1'].surcharge).toBe(3.25);
-    expect(targets['thiamineb1'].effectiveOptimal).toBe(5.25);
+    // 4040 kcal × 0.60–0.68 mg/1000 kcal = 2.42–2.75 mg.
+    expect(targets['thiamineb1'].baseOptimal).toBe(2.42);
+    expect(targets['thiamineb1'].effectiveOptimal).toBe(2.75);
+    expect(targets['thiamineb1'].surcharge).toBeUndefined();
 
-    // Mg: 75 * 6.5 = 488 base + (550 * 0.4 = 220) = 708 mg
-    expect(targets['magnesium'].surcharge).toBe(220);
-    expect(targets['magnesium'].effectiveOptimal).toBe(708);
+    // Magnesium keeps the body-weight model but no longer uses the unsupported
+    // +0.4 mg/excess-carb or +50 mg high-protein equations.
+    expect(targets['magnesium'].surcharge).toBe(0);
+    expect(targets['magnesium'].effectiveOptimal).toBe(488);
   });
 
   it('calculates EXACT transamination and methylation metrics for 300g Protein', () => {
@@ -121,7 +123,7 @@ describe('Clinical Engine Suite - Exact Physiological Math Assertions', () => {
     );
     // 0.48 / (1 + (52 - 12) * 0.025) = 0.48 / 2.0 = 0.24
     expect(highBolus.effectiveActiveRate).toBe(0.24);
-    expect(highBolus.clinicalMechanismNotes.some((n: string) => n.includes('Κορεσμός ZIP4'))).toBe(true);
+    expect(highBolus.clinicalMechanismNotes.some((n: string) => n.includes('HEURISTIC_GROUP_10'))).toBe(true);
   });
 
 });
