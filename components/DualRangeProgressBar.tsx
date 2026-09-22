@@ -164,6 +164,9 @@ export function DualRangeProgressBar({
 
   return (
     <div className="w-full font-mono space-y-4 pt-1">
+      <div className="text-[10px] text-slate-500 uppercase tracking-wide">
+        Status scale — bar position is intentionally non-linear; use the values and tooltips for quantitative amounts.
+      </div>
       {chemicalForm && (
         <div className="text-[10px] text-slate-500 truncate">
           Active form: <span className="text-slate-300">{chemicalForm}</span>
@@ -187,8 +190,16 @@ export function DualRangeProgressBar({
           </span>
         </div>
         <div className="relative h-5 w-full bg-slate-950 rounded-lg border border-slate-800 overflow-hidden">
-          <div className="absolute inset-y-0 left-0 z-10 bg-emerald-500" style={{ width: `${animalPct}%` }} />
-          <div className="absolute inset-y-0 z-10 bg-amber-500" style={{ left: `${animalPct}%`, width: `${plantPct}%` }} />
+          <div
+            className="absolute inset-y-0 left-0 z-10 bg-emerald-500"
+            style={{ width: `${animalPct}%` }}
+            title={`Animal / preformed: ${fmt(animal)} ${unit}`}
+          />
+          <div
+            className="absolute inset-y-0 z-10 bg-amber-500"
+            style={{ left: `${animalPct}%`, width: `${plantPct}%` }}
+            title={`Plant / precursor: ${fmt(plant)} ${unit}`}
+          />
           <MarkerLines rda={intakeRda} optMin={intakeOptimalMin} optMax={intakeOptimalMax} ul={inUl} />
         </div>
         <Ticks rda={intakeRda} optMin={intakeOptimalMin} optMax={intakeOptimalMax} ul={inUl} />
@@ -212,6 +223,11 @@ export function DualRangeProgressBar({
           </span>
         </div>
         <div className="relative h-5 w-full bg-slate-950 rounded-lg border border-slate-800 overflow-hidden">
+          <div
+            className="absolute inset-y-0 left-0 z-30 cursor-help"
+            style={{ width: `${Math.min(100, pct(absorbedMax, absorbOptimalMax, aUl))}%` }}
+            title={`Absorbed estimate: ${fmt(absorbedMin)}–${fmt(absorbedMax)} ${unit}`}
+          />
           <RangeFill
             fillMin={absorbedMin}
             fillMax={absorbedMax}
@@ -233,6 +249,11 @@ export function DualRangeProgressBar({
           </span>
         </div>
         <div className="relative h-5 w-full bg-slate-950 rounded-lg border border-slate-800 overflow-hidden">
+          <div
+            className="absolute inset-y-0 left-0 z-30 cursor-help"
+            style={{ width: `${Math.min(100, pct(currentMax, tissueOptimalMax, tUl))}%` }}
+            title={`Active/converted estimate: ${fmt(currentMin)}–${fmt(currentMax)} ${unit}`}
+          />
           <RangeFill
             fillMin={currentMin}
             fillMax={currentMax}
