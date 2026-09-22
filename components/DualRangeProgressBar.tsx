@@ -37,7 +37,7 @@ function Range({min,max,opt,ul,solid,wash}:{min:number;max:number;opt:number;ul:
 }
 
 export function DualRangeProgressBar(p:DualRangeProgressBarProps){
-  const inUl=p.intakeUl&&p.intakeUl>p.intakeOptimalMax?p.intakeUl:p.intakeOptimalMax*4;
+  const conversionRate=p.conversionRate ?? 1;\n  const inUl=p.intakeUl&&p.intakeUl>p.intakeOptimalMax?p.intakeUl:p.intakeOptimalMax*4;
   const aUl=p.absorbUl&&p.absorbUl>p.absorbOptimalMax?p.absorbUl:p.absorbOptimalMax*4;
   const tUl=p.tissueUl&&p.tissueUl>p.tissueOptimalMax?p.tissueUl:p.tissueOptimalMax*4;
   const animal=Math.max(0,p.animalGross||0),plant=Math.max(0,p.plantGross||0),gross=Math.max(0,p.grossInput);
@@ -47,7 +47,7 @@ export function DualRangeProgressBar(p:DualRangeProgressBarProps){
   const plantWidth=totalSources>0?grossPct*Math.min(1,plant/totalSources):0;
   const tip=(label:string,value:number)=>label+': '+fmt(value)+' '+p.unit;
   return <div className="w-full font-mono space-y-4 pt-1">
-    {p.chemicalForm&&<div className="text-[10px] text-slate-500 truncate">Active form: <span className="text-slate-300">{p.chemicalForm}</span>{p.conversionRate!==1&&<span className="ml-2 text-amber-300">Φ {(p.conversionRate!*100).toFixed(0)}%</span>}</div>}
+    {p.chemicalForm&&<div className="text-[10px] text-slate-500 truncate">Active form: <span className="text-slate-300">{p.chemicalForm}</span>{conversionRate!==1&&<span className="ml-2 text-amber-300">Φ {(conversionRate*100).toFixed(0)}%</span>}</div>}
     <div className="space-y-1">
       <div className="flex justify-between text-[10px] uppercase tracking-wide text-slate-500"><span>1. Plate gross (actual intake)</span><span className="text-slate-300">{fmt(gross)} {p.unit}</span></div>
       <div className="relative h-5 w-full bg-slate-950 rounded-lg border border-slate-800 overflow-visible" title={tip('Gross',gross)}>
