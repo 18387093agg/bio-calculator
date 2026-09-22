@@ -27,6 +27,8 @@ export interface DynamicTargetDetail {
   upperTolerableLimit: number;
   surcharge?: number;
   triggerReason?: string;
+  evidenceType?: 'human_intervention' | 'clinical_guideline' | 'population_reference' | 'biomarker_derived' | 'mechanistic_approximation' | 'fitted_calibration' | 'mathematical_derivation' | 'heuristic' | 'unsupported';
+  evidenceNote?: string;
 }
 
 export function calculateDynamicTargets(
@@ -97,6 +99,8 @@ export function calculateDynamicTargets(
     baseOptimal: 4.0,
     effectiveOptimal: 4.4,
     upperTolerableLimit: 100,
+    evidenceType: 'biomarker_derived',
+    evidenceNote: 'RDA 2.4 µg; 4.0 µg is an EFSA adult adequacy reference. 4.4 µg is a small model-derived upper edge, not an established optimum.',
   };
   targets['vitaminc'] = { effectiveRda: 90, baseOptimal: 150, effectiveOptimal: 150, upperTolerableLimit: 2000 };
 
@@ -128,15 +132,12 @@ export function calculateDynamicTargets(
   const baseMgOpt = Math.round(weight * 6.5);
   let mgSurcharge = 0;
   const mgReasons: string[] = [];
-  if (macros.carbsG > 250) {
-    const extra = Math.round((macros.carbsG - 250) * 0.4);
-    mgSurcharge += extra;
-    mgReasons.push(`+${extra}mg (Glycolysis)`);
-  }
-  if (macros.proteinG > weight * 2.2) {
-    mgSurcharge += 50;
-    mgReasons.push('+50mg (Urea synthesis)');
-  }
+  // No quantitative carbohydrate/protein -> magnesium equation is strong enough
+  // to present as physiology. The previous +0.4 mg/excess-carb and +50 mg
+  // high-protein rules were removed rather than being presented as facts.
+  // Body-weight scaling remains a model component because a larger person
+  // generally has greater total nutrient turnover, but the coefficient is
+  // explicitly model-derived rather than an established requirement equation.
   targets['magnesium'] = {
     effectiveRda: Math.round(weight * 5.0),
     baseOptimal: baseMgOpt,
@@ -154,8 +155,22 @@ export function calculateDynamicTargets(
   const znOpt = Math.max(15, Math.round(weight * 0.22));
   targets['zinc'] = { effectiveRda: isFemale ? 8.0 : 11.0, baseOptimal: znOpt, effectiveOptimal: znOpt, upperTolerableLimit: 40.0 };
   targets['copper'] = { effectiveRda: 0.9, baseOptimal: 2.0, effectiveOptimal: 2.0, upperTolerableLimit: 10.0 };
-  targets['selenium'] = { effectiveRda: 55.0, baseOptimal: 125.0, effectiveOptimal: 125.0, upperTolerableLimit: 400.0 };
-  targets['iodine'] = { effectiveRda: 150.0, baseOptimal: 250.0, effectiveOptimal: 250.0, upperTolerableLimit: 1100.0 };
+  targets['selenium'] = {
+    effectiveRda: 55.0,
+    baseOptimal: 70.0,
+    effectiveOptimal: 120.0,
+    upperTolerableLimit: 255.0,
+    evidenceType: 'biomarker_derived',
+    evidenceNote: '55 µg US RDA; 70 µg EFSA adult AI; upper optimal edge is a model range informed by biomarker saturation literature, not a universal requirement.',
+  };
+  targets['iodine'] = {
+    effectiveRda: 150.0,
+    baseOptimal: 195.0,
+    effectiveOptimal: 225.0,
+    upperTolerableLimit: 1100.0,
+    evidenceType: 'heuristic',
+    evidenceNote: '150 µg is the adult RDA. The 195–225 µg optimization band is a provisional model range and should not be presented as an established clinical optimum.',
+  };
   targets['manganese'] = { effectiveRda: 2.3, baseOptimal: 3.0, effectiveOptimal: 3.0, upperTolerableLimit: 11.0 };
   targets['chromium'] = { effectiveRda: 35.0, baseOptimal: 120.0, effectiveOptimal: 120.0, upperTolerableLimit: 1000.0 };
   targets['molybdenum'] = { effectiveRda: 45.0, baseOptimal: 90.0, effectiveOptimal: 90.0, upperTolerableLimit: 2000.0 };
