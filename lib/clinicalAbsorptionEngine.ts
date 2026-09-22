@@ -1,530 +1,94 @@
-import {
-  CanonicalNutrient,
-  NutrientCategory,
-  ClinicalPathologyState,
-  MealContextState,
-} from '@/types/bioavailability';
+import { CanonicalNutrient, ClinicalPathologyState, MealContextState, NutrientCategory } from '@/types/bioavailability';
 
 export interface EntericAbsorptionResult {
   sanitizedChemicalForm: string;
-  /** Midpoint used when a single number is required. */
   effectiveActiveRate: number;
   rateMin: number;
   rateMax: number;
-  /** Post-absorption conversion to the named active species (RAE, 5-MTHF, P5P…). */
   conversionPhi: number;
   clinicalMechanismNotes: string[];
 }
-
 export interface CalorieAbsorptionProfile {
-  proteinAbsorptionPct: number;
-  fatAbsorptionPct: number;
-  carbAbsorptionPct: number;
-  netCalorieFactor: number;
-  clinicalExplanation: string[];
+  proteinAbsorptionPct: number; fatAbsorptionPct: number; carbAbsorptionPct: number;
+  netCalorieFactor: number; clinicalExplanation: string[];
+}
+const clamp=(v:number,lo=0.01,hi=0.98)=>Math.min(hi,Math.max(lo,Number.isFinite(v)?v:lo));
+const lowAcid=(p:ClinicalPathologyState)=>p.gastricAcid==='hypochlorhydria'||p.gastricAcid==='achlorhydria';
+const hemeFraction=(c:MealContextState,f:string)=>c.hemeIronFraction!=null?Math.min(1,Math.max(0,c.hemeIronFraction)):f.includes('heme')?1:c.isPureAnimalFood?0.4:0;
+
+export function retentionForNutrient(prepKey:string,nutrient:string):number{
+  const p=(prepKey||'raw').toLowerCase(),n=nutrient.toLowerCase();
+  if(p==='raw'||p.includes('supplement'))return 1;
+  const drained=p.includes('discarded')||p.includes('drain'),kept=p.includes('stew')||p.includes('brais')||p.includes('sous')||p.includes('broth');
+  const high=p.includes('grill')||p.includes('char')||p.includes('well-done'),heat=p.includes('roast')||p.includes('bake')||p.includes('fry')||p.includes('smoke')||p.includes('air');
+  if(/iron|zinc|copper|magnesium|calcium|selenium|potassium|sodium|phosphorus|manganese|iodine|chromium|molybdenum/.test(n))return drained?.8:kept?.97:.95;
+  if(/vitamin c|thiamin|folate|riboflavin|b6|pantothen/.test(n)){if(drained)return n.includes('vitamin c')?.4:.5;if(kept)return .78;if(high)return .55;if(heat)return .7;return p.includes('steam')?.82:.75;}
+  if(/vitamin a|vitamin d|vitamin e|vitamin k/.test(n))return high?.88:heat?.93:.97;
+  if(n.includes('b12'))return drained?.85:.95;
+  return .9;
 }
 
-/**
- * USDA Table of Nutrient Retention Factors (release 6) — compact classes.
- * Minerals barely leave the food unless cooking water is discarded.
- * Ascorbate / thiamin / folate leave with heat + leachate.
- */
-export function retentionForNutrient(prepKey: string, nutrient: string): number {
-  const p = (prepKey || 'raw').toLowerCase();
-  const n = nutrient.toLowerCase();
-  if (p === 'raw' || p.includes('supplement')) return 1;
-
-  const waterLost = p.includes('discarded') || (p.includes('boiled') && p.includes('drain'));
-  const waterKept = p.includes('consumed') || p.includes('stew') || p.includes('brais') || p.includes('sous');
-  const highHeat = p.includes('grill') || p.includes('char') || p.includes('well-done');
-  const moderateHeat = p.includes('roast') || p.includes('bake') || p.includes('fry') || p.includes('smoke') || p.includes('air');
-
-  const waterSensitive =
-    n.includes('vitamin c') ||
-    n.includes('thiamin') ||
-    n.includes('folate') ||
-    n.includes('riboflavin') ||
-    n.includes('b6') ||
-    n.includes('pantothen');
-
-  const mineral =
-    n.includes('iron') ||
-    n.includes('zinc') ||
-    n.includes('copper') ||
-    n.includes('magnesium') ||
-    n.includes('calcium') ||
-    n.includes('selenium') ||
-    n.includes('potassium') ||
-    n.includes('sodium') ||
-    n.includes('phosphorus') ||
-    n.includes('manganese') ||
-    n.includes('iodine');
-
-  const fatSol =
-    n.includes('vitamin a') ||
-    n.includes('vitamin d') ||
-    n.includes('vitamin e') ||
-    n.includes('vitamin k');
-
-  if (mineral) {
-    if (waterLost) return 0.80;
-    if (waterKept) return 0.97;
-    return 0.95;
-  }
-  if (waterSensitive) {
-    if (waterLost) return n.includes('vitamin c') ? 0.40 : 0.50;
-    if (waterKept) return 0.78;
-    if (highHeat) return 0.55;
-    if (moderateHeat) return 0.70;
-    if (p.includes('steam')) return 0.82;
-    return 0.75;
-  }
-  if (fatSol) {
-    if (highHeat) return 0.88;
-    if (moderateHeat) return 0.93;
-    return 0.97;
-  }
-  if (n.includes('b12')) return waterLost ? 0.85 : 0.95;
-  return 0.90;
+export function evaluateCalorieMalabsorption(p:ClinicalPathologyState,_animal:boolean):CalorieAbsorptionProfile{
+  let protein=.95,fat=.97,carbs=.98;const notes:string[]=[];
+  if(p.gastricAcid==='hypochlorhydria'){protein-=.1;notes.push('Hypochlorhydria: modeled reduction in protein digestion.');}
+  if(p.gastricAcid==='achlorhydria'){protein-=.2;notes.push('Achlorhydria: modeled reduction in protein digestion.');}
+  if(p.pathology==='sibo'){fat-=.18;notes.push('SIBO: modeled reduction in fat absorption.');}
+  if(p.pathology==='crohns_celiac'){protein-=.15;fat-=.15;carbs-=.2;notes.push('Intestinal pathology: modeled reduction in absorptive capacity.');}
+  if(p.pathology==='ileal_resection'){fat-=.3;notes.push('Ileal resection: modeled reduction in fat absorption.');}
+  if(p.bileImpairment){fat-=.12;notes.push('Bile impairment: modeled reduction in fat absorption.');}
+  protein=Math.max(.5,protein);fat=Math.max(.4,fat);carbs=Math.max(.5,carbs);
+  return {proteinAbsorptionPct:+protein.toFixed(2),fatAbsorptionPct:+fat.toFixed(2),carbAbsorptionPct:+carbs.toFixed(2),netCalorieFactor:+((protein+fat+carbs)/3).toFixed(2),clinicalExplanation:notes};
 }
 
-export function evaluateCalorieMalabsorption(
-  pathology: ClinicalPathologyState,
-  _isPureAnimalFood: boolean
-): CalorieAbsorptionProfile {
-  let proteinPct = 0.95;
-  let fatPct = 0.97;
-  let carbPct = 0.98;
-  const explanation: string[] = [];
-
-  if (pathology.gastricAcid === 'hypochlorhydria') {
-    proteinPct -= 0.10;
-    explanation.push('Hypochlorhydria: lower pepsin activation (−10% protein).');
-  } else if (pathology.gastricAcid === 'achlorhydria') {
-    proteinPct -= 0.20;
-    explanation.push('Achlorhydria: no gastric acid (−20% protein).');
+function base(n:CanonicalNutrient,c:MealContextState,f:string):[number,number,number,string]{
+  const a=c.isPureAnimalFood;
+  switch(n){
+    case 'Vitamin A': return a?[.7,.9,1,'Preformed retinol']:[c.carotenoidMatrixCooked&&c.totalFatGrams>=5?.55:c.carotenoidMatrixCooked?.35:c.totalFatGrams>=5?.3:.2,c.carotenoidMatrixCooked&&c.totalFatGrams>=5?.95:c.carotenoidMatrixCooked?.7:c.totalFatGrams>=5?.6:.45,1,'Provitamin A / RAE'];
+    case 'Vitamin D':return[.55,.8,1,'Vitamin D'];
+    case 'Vitamin E':return[.5,.8,1,'Vitamin E'];
+    case 'Vitamin K':return[a?.4:.15,a?.7:.4,1,a?'Menaquinone':'Vitamin K1'];
+    case 'Thiamine (B1)':return[f.includes('ttfd')?[.8,.95,1,'TTFD']:[.5,.8,1,'Thiamine']][0] as never;
+    case 'Riboflavin (B2)':return[.6,.85,1,'Riboflavin'];
+    case 'Niacin (B3)':return[.55,.85,a?1:.9,'Niacin'];
+    case 'Pantothenic Acid (B5)':return[.4,.6,1,'Pantothenic acid'];
+    case 'Vitamin B6':return[a?.7:.4,a?.9:.6,a?1:.75,a?'PLP/PMP':'Pyridoxine'];
+    case 'Biotin (B7)':return[.5,.8,1,'Biotin'];
+    case 'Folate (B9)':return[.4,.6,1,'Food folate / 5-MTHF'];
+    case 'Vitamin B12':return[.45,.6,1,'Cobalamin'];
+    case 'Vitamin C':return[.7,.9,1,'Ascorbate'];
+    case 'Choline':return[.6,.85,1,'Choline'];
+    case 'Iron':{const h=hemeFraction(c,f);return[h*.15+(1-h)*.03,h*.35+(1-h)*.12,1,h>.05?'Mixed iron ('+Math.round(h*100)+'% heme)':'Non-heme iron'];}
+    case 'Zinc':return[a?.3:.15,a?.5:.3,1,'Dietary zinc'];
+    case 'Copper':return[.5,.7,1,'Dietary copper'];
+    case 'Magnesium':return[a?.35:.25,a?.5:.4,1,'Dietary magnesium'];
+    case 'Calcium':return[.25,.4,1,'Dietary calcium'];
+    case 'Selenium':return[.7,.9,1,'Selenium'];
+    case 'Iodine':return[.9,.98,1,'Iodide / iodine'];
+    case 'Manganese':return[.03,.08,1,'Manganese'];
+    case 'Molybdenum':return[.7,.93,1,'Molybdate'];
+    case 'Chromium':return f.includes('picolinate')?[.02,.05,1,'Chromium picolinate']:[.005,.02,1,'Chromium'];
+    case 'Phosphorus':return[.55,.7,1,'Phosphate'];
+    case 'Potassium':case 'Sodium':return[.85,.95,1,n];
+    default:return[.45,.7,1,f||'Dietary form'];
   }
-
-  if (pathology.pathology === 'sibo') {
-    fatPct -= 0.18;
-    explanation.push('SIBO: bile-salt deconjugation (−18% fat).');
-  }
-  if (pathology.pathology === 'crohns_celiac') {
-    proteinPct -= 0.15;
-    fatPct -= 0.15;
-    carbPct -= 0.20;
-    explanation.push('Villous atrophy: smaller absorptive surface.');
-  } else if (pathology.pathology === 'ileal_resection') {
-    fatPct -= 0.30;
-    explanation.push('Ileal resection: bile-salt wasting (−30% fat).');
-  }
-  if (pathology.bileImpairment) {
-    fatPct -= 0.12;
-    explanation.push('Bile impairment: incomplete micelles (−12% fat).');
-  }
-
-  return {
-    proteinAbsorptionPct: Math.max(0.5, Number(proteinPct.toFixed(2))),
-    fatAbsorptionPct: Math.max(0.4, Number(fatPct.toFixed(2))),
-    carbAbsorptionPct: Math.max(0.5, Number(carbPct.toFixed(2))),
-    netCalorieFactor: Number(((proteinPct + fatPct + carbPct) / 3).toFixed(2)),
-    clinicalExplanation: explanation,
-  };
 }
 
-function clampRate(n: number): number {
-  return Math.min(0.98, Math.max(0.01, Number(n.toFixed(3))));
-}
-
-/**
- * Hill-type ZIP4 saturation. Not a fitted paper constant —
- * shape matches declining Zn absorption as luminal Zn rises (Cousins / Hunt).
- */
-function zip4Scale(totalZnMg: number): number {
-  const km = 12;
-  const excess = Math.max(0, totalZnMg - 8);
-  return km / (km + excess);
-}
-
-export function evaluateEntericBioavailability(
-  nutrient: CanonicalNutrient,
-  chemicalForm: string,
-  category: NutrientCategory,
-  pathology: ClinicalPathologyState,
-  context: MealContextState
-): EntericAbsorptionResult {
-  const notes: string[] = [];
-  let formName = chemicalForm || 'Dietary form';
-  let min = 0.45;
-  let max = 0.65;
-  let phi = 1;
-
-  const animal = !!context.isPureAnimalFood;
-  const form = (chemicalForm || '').toLowerCase();
-
-  switch (nutrient) {
-    case 'Vitamin A':
-      if (animal) {
-        min = 0.7;
-        max = 0.9;
-        phi = 1;
-        formName = 'Preformed retinol / retinyl esters';
-        notes.push('Animal retinol: IOM absorption ~70–90% with fat. Φ = 1.');
-      } else {
-        // Incoming amount should already be RAE (see collapseMicrosForFood).
-        const fat = context.totalFatGrams || 0;
-        const cooked = !!context.carotenoidMatrixCooked;
-        if (cooked && fat >= 5) {
-          min = 0.55;
-          max = 0.95;
-          notes.push('Cooked + fat: cell walls open and micelles form. Net often above raw and can beat IOM 12:1. Char only burns a slice of βC (~10–20%).');
-        } else if (cooked) {
-          min = 0.35;
-          max = 0.7;
-          notes.push('Cooked without much added fat still raises carotenoid bioaccess vs raw (Hedrén / Rock). Grill/char ≠ raw.');
-        } else if (fat >= 5) {
-          min = 0.3;
-          max = 0.6;
-          notes.push('Raw + fat helps micelles; intact raw matrix still limits uptake.');
-        } else {
-          min = 0.2;
-          max = 0.45;
-          notes.push('Raw, low fat: poorest carotenoid yield. Cooking or oil raises bar 2.');
-        }
-        phi = 1;
-        formName = 'Provitamin A already as RAE';
-      }
-      break;
-
-    case 'Vitamin D':
-      min = 0.55;
-      max = 0.8;
-      formName = 'Cholecalciferol';
-      break;
-
-    case 'Vitamin E':
-      min = 0.5;
-      max = 0.8;
-      break;
-
-    case 'Vitamin K':
-      min = animal ? 0.4 : 0.15;
-      max = animal ? 0.7 : 0.4;
-      notes.push(animal ? 'MK-4 from animal tissues.' : 'K1 absorption is incomplete and bile-dependent.');
-      break;
-
-    case 'Thiamine (B1)':
-      if (form.includes('ttfd')) {
-        min = 0.8;
-        max = 0.95;
-        formName = 'TTFD (supplement)';
-      } else {
-        min = 0.5;
-        max = 0.8;
-        notes.push('Food thiamin via THTR1/2; saturates at supplement doses.');
-      }
-      break;
-
-    case 'Riboflavin (B2)':
-      min = 0.6;
-      max = 0.85;
-      break;
-
-    case 'Niacin (B3)':
-      min = 0.55;
-      max = 0.85;
-      phi = animal ? 1 : 0.9;
-      break;
-
-    case 'Pantothenic Acid (B5)':
-      min = 0.4;
-      max = 0.6;
-      break;
-
-    case 'Vitamin B6':
-      min = animal ? 0.7 : 0.4;
-      max = animal ? 0.9 : 0.6;
-      phi = animal ? 1 : 0.5;
-      notes.push(animal ? 'Animal B6 is largely PLP/PMP (Φ≈1).' : 'Plant pyridoxine glycosides lower Φ to ~0.75.');
-      break;
-
-    case 'Biotin (B7)':
-      min = 0.5;
-      max = 0.8;
-      break;
-
-    case 'Folate (B9)':
-      min = 0.4;
-      max = 0.6;
-      phi = 1;
-      formName = 'Food folate / 5-MTHF';
-      notes.push('Food-dose absorption ~50–70%. RDA is already DFE — no second 0.5 Φ.');
-      break;
-
-    case 'Vitamin B12':
-      min = 0.45;
-      max = 0.6;
-      formName = 'Cobalamin (IF + passive)';
-      notes.push('IF saturates near 1.5–2 µg; extra is ~1% passive. Cap applied after this rate.');
-      break;
-
-    case 'Vitamin C':
-      min = 0.7;
-      max = 0.9;
-      notes.push('SVCT1 saturates at gram doses; food doses stay high.');
-      break;
-
-    case 'Choline':
-      min = 0.6;
-      max = 0.85;
-      break;
-
-    case 'Iron': {
-      const hemeFrac =
-        context.hemeIronFraction != null
-          ? Math.min(1, Math.max(0, context.hemeIronFraction))
-          : form.includes('heme')
-            ? 1
-            : animal
-              ? 0.4
-              : 0;
-      const hMin = 0.15;
-      const hMax = 0.35;
-      const nMin = 0.03;
-      const nMax = 0.12;
-      min = hemeFrac * hMin + (1 - hemeFrac) * nMin;
-      max = hemeFrac * hMax + (1 - hemeFrac) * nMax;
-      formName = hemeFrac > 0.05 ? `Mixed iron (${Math.round(hemeFrac * 100)}% heme)` : 'Non-heme iron';
-      notes.push(
-        `Iron = heme×15–35% + non-heme×2–12% (Hunt/Hallberg). Animal foods are not assumed to be 100% heme; 40% is only a generic fallback when no food-specific heme fraction is available.`
-      );
-      break;
-    }
-
-    case 'Zinc':
-      min = animal ? 0.3 : 0.15;
-      max = animal ? 0.5 : 0.3;
-      {
-        const z = zip4Scale(context.totalZincMg || 0);
-        min *= z;
-        max *= z;
-        if ((context.totalZincMg || 0) > 12) {
-          notes.push(
-            `HEURISTIC_GROUP_10: ZIP4 Hill scale at ${context.totalZincMg.toFixed(1)} mg Zn — shape only, not a measured constant.`
-          );
-        }
-      }
-      break;
-
-    case 'Copper':
-      min = 0.5;
-      max = 0.7;
-      break;
-
-    case 'Magnesium':
-      min = animal ? 0.35 : 0.25;
-      max = animal ? 0.5 : 0.4;
-      break;
-
-    case 'Calcium':
-      min = 0.25;
-      max = 0.4;
-      notes.push('Typical adult Ca absorption 25–35%; higher if deficient or high 1,25-(OH)2-D.');
-      break;
-
-    case 'Selenium':
-      min = 0.7;
-      max = 0.9;
-      break;
-
-    case 'Iodine':
-      min = 0.9;
-      max = 0.98;
-      break;
-
-    case 'Chromium':
-      if (form.includes('picolinate')) {
-        min = 0.02;
-        max = 0.05;
-        formName = 'Chromium picolinate';
-      } else {
-        min = 0.005;
-        max = 0.02;
-      }
-      break;
-
-    case 'Molybdenum':
-      min = 0.7;
-      max = 0.93;
-      break;
-
-    case 'Manganese':
-      min = 0.03;
-      max = 0.08;
-      break;
-
-    case 'Phosphorus':
-      min = 0.55;
-      max = 0.7;
-      break;
-
-    case 'Potassium':
-    case 'Sodium':
-      min = 0.85;
-      max = 0.95;
-      break;
-
-    default:
-      min = 0.45;
-      max = 0.7;
-      break;
+export function evaluateEntericBioavailability(nutrient:CanonicalNutrient,chemicalForm:string,category:NutrientCategory,pathology:ClinicalPathologyState,context:MealContextState):EntericAbsorptionResult{
+  const f=(chemicalForm||'').toLowerCase();let [min,max,phi,formName]=base(nutrient,context,f);const notes:string[]=[];
+  const h=nutrient==='Iron'?hemeFraction(context,f):0,nonHeme=1-h;
+  if((context.totalOxalatesMg||0)>50&&!context.isPureAnimalFood){if(nutrient==='Calcium'){min*=.8;max*=.9;notes.push('Meal oxalate load reduces calcium availability in the model.');}if(nutrient==='Magnesium'){min*=.85;max*=.9;}}
+  if((context.totalPhytatesMg||0)>100&&!context.isPureAnimalFood){if(nutrient==='Zinc'){min*=.7;max*=.8;notes.push('Meal phytate load reduces zinc availability in the model.');}if(nutrient==='Iron'&&nonHeme>0){min*=.5;max*=.6;notes.push('Meal phytate load reduces non-heme iron availability in the model.');}if(nutrient==='Calcium'){min*=.85;max*=.9;}}
+  if(context.coingestedTannins&&nutrient==='Iron'&&nonHeme>0){min*=.35;max*=.45;notes.push('Co-ingested tannins reduce non-heme iron absorption.');}
+  if(nutrient==='Iron'&&nonHeme>0){if(context.totalCalciumMg>350){min*=.65;max*=.75;}if(context.totalZincMg>25){min*=.75;max*=.85;}if(context.totalVitaminCMg>=50){min*=1.25;max*=1.4;notes.push('Vitamin C enhances non-heme iron absorption.');}}
+  if(nutrient==='Copper'&&context.totalCopperMg>0&&context.totalZincMg/context.totalCopperMg>20){min*=.4;max*=.5;notes.push('High meal zinc:copper ratio is modeled as reducing copper absorption.');}
+  if(nutrient==='Magnesium'&&context.totalCalciumMg>800){min*=.75;max*=.85;}
+  if(lowAcid(pathology)){
+    if(nutrient==='Iron'){min*=h+nonHeme*.4;max*=h+nonHeme*.5;if(nonHeme>0)notes.push('Low stomach acid reduces the non-heme fraction; heme iron is not given the same penalty.');}
+    if(nutrient==='Vitamin B12'){const free=/supplement|crystalline|cyanocobalamin|methylcobalamin|hydroxo/.test(f);if(!free){min*=.3;max*=.4;notes.push('Low stomach acid reduces release of food-bound B12 from dietary protein.');}else notes.push('Free/crystalline supplemental B12 does not require gastric protein release.');}
+    if(nutrient==='Calcium'&&f.includes('carbonate')){min*=.25;max*=.35;}
   }
-
-  const oxalates = context.totalOxalatesMg || 0;
-  if (oxalates > 50 && !animal) {
-    if (nutrient === 'Calcium') {
-      const penalty = Math.min(0.7, (oxalates / 250) * 0.5);
-      min *= 1 - penalty;
-      max *= 1 - penalty;
-      notes.push(`Oxalate ${oxalates.toFixed(0)} mg binds Ca (−${Math.round(penalty * 100)}%).`);
-    } else if (nutrient === 'Magnesium') {
-      const penalty = Math.min(0.4, (oxalates / 300) * 0.3);
-      min *= 1 - penalty;
-      max *= 1 - penalty;
-    }
-  }
-
-  if (context.coingestedTannins) {
-    if (nutrient === 'Iron' && !formName.toLowerCase().includes('heme')) {
-      min *= 0.35;
-      max *= 0.45;
-      notes.push('Tea/coffee tannins chelate non-heme Fe.');
-    }
-    if (nutrient === 'Thiamine (B1)' && !form.includes('ttfd')) {
-      min *= 0.6;
-      max *= 0.7;
-    }
-  }
-
-  const phytates = context.totalPhytatesMg || 0;
-  if (phytates > 100 && !animal) {
-    if (nutrient === 'Zinc') {
-      const penalty = Math.min(0.6, (phytates / 400) * 0.45);
-      min *= 1 - penalty;
-      max *= 1 - penalty;
-      notes.push(`Phytate ${phytates.toFixed(0)} mg forms Zn complexes.`);
-    } else if (nutrient === 'Iron' && !formName.toLowerCase().includes('heme')) {
-      min *= 0.5;
-      max *= 0.6;
-      notes.push('Phytate blocks non-heme Fe reduction.');
-    } else if (nutrient === 'Calcium') {
-      min *= 0.85;
-      max *= 0.9;
-    }
-  }
-
-  if (nutrient === 'Iron' && !formName.toLowerCase().includes('heme')) {
-    if ((context.totalCalciumMg || 0) > 350) {
-      min *= 0.65;
-      max *= 0.75;
-      notes.push('Ca >350 mg competes at DMT1.');
-    }
-    if ((context.totalZincMg || 0) > 25) {
-      min *= 0.75;
-      max *= 0.85;
-      notes.push('Zn >25 mg competes at DMT1.');
-    }
-    if ((context.totalVitaminCMg || 0) >= 50) {
-      min *= 1.4;
-      max *= 1.5;
-      notes.push('Vitamin C ≥50 mg reduces Fe3+ → Fe2+.');
-    }
-  }
-
-  if (nutrient === 'Copper') {
-    const zn = context.totalZincMg || 0;
-    const cu = Math.max(0.1, context.totalCopperMg || 0.1);
-    const ratio = zn / cu;
-    if (ratio > 20) {
-      min *= 0.4;
-      max *= 0.5;
-      notes.push(`Zn:Cu ${ratio.toFixed(1)}:1 induces metallothionein (IOM caution ≥15–20:1).`);
-    }
-  }
-
-  if (nutrient === 'Magnesium' && (context.totalCalciumMg || 0) > 800) {
-    min *= 0.75;
-    max *= 0.85;
-    notes.push('Ca >800 mg modestly lowers Mg uptake.');
-  }
-
-  if (pathology.gastricAcid === 'hypochlorhydria' || pathology.gastricAcid === 'achlorhydria') {
-    if (nutrient === 'Iron') {
-      const hemeFrac =
-        context.hemeIronFraction != null
-          ? Math.min(1, Math.max(0, context.hemeIronFraction))
-          : form.includes('heme')
-            ? 1
-            : animal
-              ? 0.4
-              : 0;
-
-      const nonHemeFrac = 1 - hemeFrac;
-      min *= hemeFrac + nonHemeFrac * 0.4;
-      max *= hemeFrac + nonHemeFrac * 0.5;
-
-      if (nonHemeFrac > 0) {
-        notes.push('Low acid: non-heme Fe absorption is reduced; heme Fe is modeled as substantially less acid-dependent.');
-      }
-    }
-    if (nutrient === 'Calcium' && form.includes('carbonate')) {
-      min *= 0.25;
-      max *= 0.35;
-    }
-    if (nutrient === 'Vitamin B12') {
-      const isSupplementOrFreeForm =
-        form.includes('supplement') ||
-        form.includes('crystalline') ||
-        form.includes('cyanocobalamin') ||
-        form.includes('methylcobalamin') ||
-        form.includes('hydroxocobalamin') ||
-        form.includes('hydroxycobalamin');
-
-      if (!isSupplementOrFreeForm) {
-        min *= 0.3;
-        max *= 0.4;
-        notes.push('Low acid: food-bound B12 release from protein is impaired; source-specific model penalty applied.');
-      } else {
-        notes.push('Low acid: free/crystalline B12 does not require gastric protein release, so no food-bound B12 acid penalty is applied.');
-      }
-    }
-    if (nutrient === 'Zinc' && !animal) {
-      min *= 0.7;
-      max *= 0.8;
-    }
-  }
-
-  if (pathology.pathology === 'crohns_celiac') {
-    min *= 0.6;
-    max *= 0.7;
-    notes.push('Villous atrophy cuts absorptive area.');
-  }
-  if (pathology.bileImpairment && category === 'fat_soluble_vitamin') {
-    min *= 0.55;
-    max *= 0.7;
-    notes.push('Bile impairment: poor micelles for A/D/E/K.');
-  }
-
-  min = clampRate(min);
-  max = clampRate(Math.max(min, max));
-  const mid = clampRate((min + max) / 2);
-
-  return {
-    sanitizedChemicalForm: formName,
-    effectiveActiveRate: mid,
-    rateMin: min,
-    rateMax: max,
-    conversionPhi: phi,
-    clinicalMechanismNotes: notes,
-  };
+  if(pathology.pathology==='crohns_celiac'){min*=.6;max*=.7;}
+  if(pathology.bileImpairment&&category==='fat_soluble_vitamin'){min*=.55;max*=.7;}
+  min=clamp(min);max=clamp(Math.max(min,max));
+  return {sanitizedChemicalForm:formName,effectiveActiveRate:clamp((min+max)/2),rateMin:min,rateMax:max,conversionPhi:clamp(phi,0,1),clinicalMechanismNotes:notes};
 }
