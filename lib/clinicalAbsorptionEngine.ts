@@ -459,10 +459,23 @@ export function evaluateEntericBioavailability(
   }
 
   if (pathology.gastricAcid === 'hypochlorhydria' || pathology.gastricAcid === 'achlorhydria') {
-    if (nutrient === 'Iron' && !formName.toLowerCase().includes('heme')) {
-      min *= 0.4;
-      max *= 0.5;
-      notes.push('Low acid: non-heme Fe stays undissociated.');
+    if (nutrient === 'Iron') {
+      const hemeFrac =
+        context.hemeIronFraction != null
+          ? Math.min(1, Math.max(0, context.hemeIronFraction))
+          : form.includes('heme')
+            ? 1
+            : animal
+              ? 0.4
+              : 0;
+
+      const nonHemeFrac = 1 - hemeFrac;
+      min *= hemeFrac + nonHemeFrac * 0.4;
+      max *= hemeFrac + nonHemeFrac * 0.5;
+
+      if (nonHemeFrac > 0) {
+        notes.push('Low acid: non-heme Fe absorption is reduced; heme Fe is modeled as substantially less acid-dependent.');
+      }
     }
     if (nutrient === 'Calcium' && form.includes('carbonate')) {
       min *= 0.25;
