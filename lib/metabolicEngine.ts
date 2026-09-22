@@ -4,6 +4,11 @@ export interface UserMetabolicProfile {
   diet: 'carnivore' | 'keto' | 'paleo' | 'mediterranean' | 'high_carb' | 'vegetarian';
   bodyWeightKg: number;
   sex: 'male' | 'female';
+  /**
+   * Estimated daily energy requirement (not food intake).
+   * Prefer wiring this to the app's TDEE/energy-requirement calculation.
+   */
+  energyRequirementKcal?: number;
 }
 
 export interface MealMacroProfile {
@@ -40,16 +45,36 @@ export function calculateDynamicTargets(
   targets['vitamink'] = { effectiveRda: 120, baseOptimal: 180, effectiveOptimal: 180, upperTolerableLimit: 1000 };
 
   // 2. WATER-SOLUBLE B-COMPLEX & C
-  const baseB1 = 2.5;
-  let b1Surcharge = 0;
-  if (macros.carbsG > 150) b1Surcharge = Number(((macros.carbsG - 150) * 0.005).toFixed(2));
+  //
+  // Thiamine is modeled from ENERGY REQUIREMENT, not carbohydrate intake.
+  // EFSA's adult PRI is approximately 0.1 mg/MJ = 0.418 mg/1000 kcal.
+  //
+  // The app's optimization zone is intentionally higher:
+  //   optimal minimum = 0.60 mg/1000 kcal
+  //   optimal maximum = 0.68 mg/1000 kcal
+  //
+  // Therefore at 2500 kcal/day:
+  //   optimal = 1.50–1.70 mg/day
+  //
+  // The 0.60–0.68 mg/1000 kcal zone is a MODEL OPTIMIZATION RANGE,
+  // not an established clinical requirement.
+  const energyRequirementKcal = Math.max(
+    0,
+    Number.isFinite(user.energyRequirementKcal)
+      ? Number(user.energyRequirementKcal)
+      : Math.max(0, macros.totalCalories)
+  );
+
+  const b1OptimalMin = Number((energyRequirementKcal * 0.0006).toFixed(2));
+  const b1OptimalMax = Number((energyRequirementKcal * 0.00068).toFixed(2));
+  const b1EffectiveOptimal = Number(((b1OptimalMin + b1OptimalMax) / 2).toFixed(2));
+
   targets['thiamineb1'] = {
-    effectiveRda: 1.2,
-    baseOptimal: baseB1,
-    surcharge: b1Surcharge,
-    effectiveOptimal: Number((baseB1 + b1Surcharge).toFixed(2)),
+    effectiveRda: isFemale ? 1.1 : 1.2,
+    baseOptimal: b1OptimalMin,
+    effectiveOptimal: b1EffectiveOptimal,
     upperTolerableLimit: 100,
-    triggerReason: b1Surcharge > 0 ? `+${b1Surcharge}mg (Carb metabolic flux)` : undefined,
+    triggerReason: `Energy requirement model: ${energyRequirementKcal.toFixed(0)} kcal/day`,
   };
 
   targets['riboflavinb2'] = { effectiveRda: 1.3, baseOptimal: 2.2, effectiveOptimal: 2.2, upperTolerableLimit: 100 };
@@ -67,7 +92,12 @@ export function calculateDynamicTargets(
 
   targets['biotinb7'] = { effectiveRda: 30, baseOptimal: 60, effectiveOptimal: 60, upperTolerableLimit: 500 };
   targets['folateb9'] = { effectiveRda: 400, baseOptimal: 600, effectiveOptimal: 600, upperTolerableLimit: 1000 };
-  targets['vitaminb12'] = { effectiveRda: 2.4, baseOptimal: 6.0, effectiveOptimal: 6.0, upperTolerableLimit: 100 };
+  targets['vitaminb12'] = {
+    effectiveRda: 2.4,
+    baseOptimal: 4.0,
+    effectiveOptimal: 4.4,
+    upperTolerableLimit: 100,
+  };
   targets['vitaminc'] = { effectiveRda: 90, baseOptimal: 150, effectiveOptimal: 150, upperTolerableLimit: 2000 };
 
   // 3. CHOLINE & METHYLATION
